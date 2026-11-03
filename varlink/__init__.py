@@ -38,6 +38,7 @@ if hasattr(os, "fork"):
         "VarlinkEncoder",
         "VarlinkError",
         "Interface",
+        "MalformedCall",
         "Scanner",
         "get_listen_fd",
         "ExpectedMore",
@@ -61,6 +62,7 @@ else:
         "VarlinkEncoder",
         "VarlinkError",
         "Interface",
+        "MalformedCall",
         "Scanner",
         "get_listen_fd",
         "ExpectedMore",
@@ -81,4 +83,4 @@ from .error import (
     VarlinkError,
 )
 from .scanner import Interface, Scanner
-from .server import RequestHandler, Server, Service, ThreadingServer, get_listen_fd
+from .server import MalformedCall, RequestHandler, Server, Service, ThreadingServer, get_listen_fd

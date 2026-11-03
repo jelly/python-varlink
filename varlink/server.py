@@ -15,6 +15,10 @@ from types import GeneratorType
 from typing import Optional, Union
 
 
+class MalformedCall(Exception):
+    """Raised by :meth:`Service.handle` for a call the server must reject by closing the connection."""
+
+
 class Service:
     """Varlink service server handler
 
@@ -114,6 +118,12 @@ class Service:
         return {"description": i.description}
 
     def _handle(self, message, raw_message, _server=None, _request=None):
+        # Only one of these flags may be specified at once.
+        # https://uapi-group.org/specifications/specs/varlink/#call
+        call_flags = ("oneway", "more", "upgrade")
+        if sum(message.get(flag) is True for flag in call_flags) > 1:
+            raise MalformedCall("a call may set at most one of 'oneway', 'more' and 'upgrade'")
+
         try:
             interface_name, _, method_name = message.get("method", "").rpartition(".")
             if not interface_name or not method_name:
@@ -161,15 +171,14 @@ class Service:
                 for k in sig.parameters.keys()
             }
 
-            if message.get("more", False) or message.get("oneway", False) or message.get("upgrade", False):
-                if message.get("more", False) and "_more" in arg_names:
-                    kwargs["_more"] = True
+            if message.get("more", False) and "_more" in arg_names:
+                kwargs["_more"] = True
 
-                if message.get("oneway", False) and "_oneway" in arg_names:
-                    kwargs["_oneway"] = True
+            if message.get("oneway", False) and "_oneway" in arg_names:
+                kwargs["_oneway"] = True
 
-                if message.get("upgrade", False) and "_upgrade" in arg_names:
-                    kwargs["_upgrade"] = True
+            if message.get("upgrade", False) and "_upgrade" in arg_names:
+                kwargs["_upgrade"] = True
 
             if "_raw" in arg_names:
                 kwargs["_raw"] = raw_message
@@ -250,6 +259,9 @@ class Service:
 
             >>> for outgoing_message in service.handle(incoming_message):
             >>>    connection.write(outgoing_message)
+
+        Raises :class:`MalformedCall` if the call sets more than one of ``oneway``, ``more``
+        and ``upgrade``. The caller MUST then close the connection without replying.
         """
         if not message:
             return
@@ -386,9 +398,13 @@ class RequestHandler(StreamRequestHandler):
                 message += c
                 continue
 
-            for reply in self.service.handle(message, _server=self.server, _request=self.request):
-                if reply is not None:
-                    self.wfile.write(reply + b"\0")
+            try:
+                for reply in self.service.handle(message, _server=self.server, _request=self.request):
+                    if reply is not None:
+                        self.wfile.write(reply + b"\0")
+            except MalformedCall:
+                self.request.shutdown(socket.SHUT_RDWR)
+                return
 
             message = b""
 
