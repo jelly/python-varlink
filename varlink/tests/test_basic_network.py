@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -74,3 +75,22 @@ def test_wrong_url(server_factory) -> None:
     address = f"uenix:org.varlink.service_wrong_url_test_{os.getpid()}"
     with pytest.raises(ConnectionError):
         server_factory(address, service)
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        {"oneway": True, "more": True},
+        {"oneway": True, "upgrade": True},
+        {"more": True, "upgrade": True},
+    ],
+)
+def test_conflicting_call_flags_close_connection(server_factory, flags) -> None:
+    server_factory("tcp:127.0.0.1:23452", service)
+
+    with socket.create_connection(("127.0.0.1", 23452)) as connection:
+        message = {"method": "org.varlink.service.GetInfo", **flags}
+        connection.settimeout(2)
+        connection.sendall((json.dumps(message) + "\0").encode("utf-8"))
+
+        assert connection.recv(1) == b""

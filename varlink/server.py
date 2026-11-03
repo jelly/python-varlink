@@ -15,6 +15,10 @@ from types import GeneratorType
 from typing import Optional, Union
 
 
+class InvalidCall(Exception):
+    pass
+
+
 class Service:
     """Varlink service server handler
 
@@ -151,7 +155,7 @@ class Service:
             kwargs = {}
 
             sig = inspect.signature(func)
-            arg_names = [
+            arg_names = {
                 (
                     sig.parameters[k].kind
                     in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
@@ -159,17 +163,21 @@ class Service:
                     or None
                 )
                 for k in sig.parameters.keys()
-            ]
+            }
 
-            if message.get("more", False) or message.get("oneway", False) or message.get("upgrade", False):
-                if message.get("more", False) and "_more" in arg_names:
-                    kwargs["_more"] = True
+            flags = ("oneway", "more", "upgrade")
 
-                if message.get("oneway", False) and "_oneway" in arg_names:
-                    kwargs["_oneway"] = True
+            if sum(message.get(flag) is True for flag in flags) > 1:
+                raise InvalidCall()
 
-                if message.get("upgrade", False) and "_upgrade" in arg_names:
-                    kwargs["_upgrade"] = True
+            if message.get("more", False) and "_more" in arg_names:
+                kwargs["_more"] = True
+
+            if message.get("oneway", False) and "_oneway" in arg_names:
+                kwargs["_oneway"] = True
+
+            if message.get("upgrade", False) and "_upgrade" in arg_names:
+                kwargs["_upgrade"] = True
 
             if "_raw" in arg_names:
                 kwargs["_raw"] = raw_message
@@ -386,9 +394,13 @@ class RequestHandler(StreamRequestHandler):
                 message += c
                 continue
 
-            for reply in self.service.handle(message, _server=self.server, _request=self.request):
-                if reply is not None:
-                    self.wfile.write(reply + b"\0")
+            try:
+                for reply in self.service.handle(message, _server=self.server, _request=self.request):
+                    if reply is not None:
+                        self.wfile.write(reply + b"\0")
+            except InvalidCall:
+                self.request.shutdown(socket.SHUT_RDWR)
+                return
 
             message = b""
 
