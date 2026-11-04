@@ -1,0 +1,48 @@
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+name: Integration tests
+
+jobs:
+  integration:
+    name: Integration test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r test-requirements.txt
+          python -m pip install -e .
+
+      - name: Show systemd version and varlink sockets
+        run: |
+          systemctl --version | head -n1
+          ls -l /run/systemd/ | grep io.systemd || true
+
+      - name: Make sure systemd varlink services are available
+        run: |
+          for socket in io.systemd.Hostname io.systemd.Login; do
+            test -S "/run/systemd/$socket" || { echo "Missing /run/systemd/$socket"; exit 1; }
+          done
+          # Start the socket-activated services so the first connection doesn't race activation
+          sudo systemctl start systemd-hostnamed.service systemd-logind.service
+
+      - name: Run integration tests
+        run: python -m pytest -v varlink/tests/test_integration.py

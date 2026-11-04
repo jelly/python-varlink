@@ -16,3 +16,7 @@ dist/
 *.swa
 *.swp
 build/
+
+/mkosi.output/
+/mkosi.cache/
+/mkosi.builddir/
