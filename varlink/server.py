@@ -151,7 +151,7 @@ class Service:
             kwargs = {}
 
             sig = inspect.signature(func)
-            arg_names = [
+            arg_names = {
                 (
                     sig.parameters[k].kind
                     in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
@@ -159,7 +159,7 @@ class Service:
                     or None
                 )
                 for k in sig.parameters.keys()
-            ]
+            }
 
             if message.get("more", False) or message.get("oneway", False) or message.get("upgrade", False):
                 if message.get("more", False) and "_more" in arg_names:
